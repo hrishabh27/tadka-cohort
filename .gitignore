@@ -38,3 +38,7 @@ TestResults/
 coverage/
 *.coverage
 *.coveragexml
+
+# Multi-branch worktree directories
+cohort-days/
+
