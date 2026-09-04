@@ -10,7 +10,10 @@ import java.util.List;
 import java.util.UUID;
 
 @Entity
-@Table(name = "orders", schema = "orders")
+@Table(name = "orders", schema = "orders", indexes = {
+    @Index(name = "idx_orders_customer_created", columnList = "customerId, createdAt DESC"),
+    @Index(name = "idx_orders_created_at", columnList = "createdAt DESC")
+})
 public class Order {
 
     @Id

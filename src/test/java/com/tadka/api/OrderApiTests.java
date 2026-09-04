@@ -149,4 +149,60 @@ class OrderApiTests {
         String secondOrderId = objectMapper.readTree(secondResult.getResponse().getContentAsString()).get("id").asText();
         org.junit.jupiter.api.Assertions.assertEquals(firstOrderId, secondOrderId);
     }
+
+    @Test
+    void orderHistoryKeysetPaginationPaginatesCorrectly() throws Exception {
+        List<Restaurant> restaurants = restaurantRepository.findAll();
+        Restaurant restaurant = restaurants.get(0);
+        List<MenuItem> menu = menuItemRepository.findByRestaurantId(restaurant.getId());
+        MenuItem item1 = menu.get(0);
+
+        UUID testCustomer = UUID.randomUUID();
+
+        // Create 3 orders
+        for (int i = 0; i < 3; i++) {
+            CreateOrderRequest req = new CreateOrderRequest(
+                    testCustomer,
+                    restaurant.getId(),
+                    new Address("Line " + i, "Area", "Bengaluru", "560001"),
+                    List.of(new OrderItemRequest(item1.getId(), 1))
+            );
+            mockMvc.perform(post("/api/v1/orders")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(req)))
+                    .andExpect(status().isCreated());
+            Thread.sleep(10); // Ensure monotonic timestamp ordering
+        }
+
+        // Page 1: limit 2
+        MvcResult page1Result = mockMvc.perform(get("/api/v1/orders/history")
+                        .param("customerId", testCustomer.toString())
+                        .param("limit", "2"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items", hasSize(2)))
+                .andExpect(jsonPath("$.hasMore").value(true))
+                .andExpect(jsonPath("$.nextCursor").isNotEmpty())
+                .andReturn();
+
+        String nextCursor = objectMapper.readTree(page1Result.getResponse().getContentAsString()).get("nextCursor").asText();
+
+        // Page 2: with cursor and limit 2 -> remaining 1 order
+        mockMvc.perform(get("/api/v1/orders/history")
+                        .param("customerId", testCustomer.toString())
+                        .param("cursor", nextCursor)
+                        .param("limit", "2"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items", hasSize(1)))
+                .andExpect(jsonPath("$.hasMore").value(false))
+                .andExpect(jsonPath("$.nextCursor").doesNotExist());
+    }
+
+    @Test
+    void orderHistoryMalformedCursorReturns400() throws Exception {
+        mockMvc.perform(get("/api/v1/orders/history")
+                        .param("customerId", UUID.randomUUID().toString())
+                        .param("cursor", "malformed_cursor_value"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.title").value("Bad Request"));
+    }
 }

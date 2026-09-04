@@ -128,10 +128,42 @@ public class OrdersController {
     }
 
     @GetMapping("/{id}")
+    @Transactional(readOnly = true)
     public ResponseEntity<OrderResponse> getOrder(@PathVariable UUID id) {
         Order order = orderRepository.findById(id)
                 .orElseThrow(() -> new NotFoundException("Order not found: " + id));
         return ResponseEntity.ok(toResponse(order));
+    }
+
+    @GetMapping("/history")
+    @Transactional(readOnly = true)
+    public ResponseEntity<CursorPageResponse<OrderResponse>> getOrderHistory(
+            @RequestParam UUID customerId,
+            @RequestParam(required = false) String cursor,
+            @RequestParam(defaultValue = "10") int limit) {
+        int pageSize = Math.max(1, Math.min(limit, 50));
+
+        OrderCursor decodedCursor = OrderCursor.decode(cursor);
+        org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(0, pageSize + 1);
+
+        List<Order> orders;
+        if (decodedCursor == null) {
+            orders = orderRepository.findFirstPageByCustomerId(customerId, pageable);
+        } else {
+            orders = orderRepository.findNextPageByCustomerId(customerId, decodedCursor.createdAt(), decodedCursor.id(), pageable);
+        }
+
+        boolean hasMore = orders.size() > pageSize;
+        List<Order> resultOrders = hasMore ? orders.subList(0, pageSize) : orders;
+
+        String nextCursor = null;
+        if (hasMore && !resultOrders.isEmpty()) {
+            Order last = resultOrders.get(resultOrders.size() - 1);
+            nextCursor = new OrderCursor(last.getCreatedAt(), last.getId()).encode();
+        }
+
+        List<OrderResponse> responses = resultOrders.stream().map(this::toResponse).toList();
+        return ResponseEntity.ok(new CursorPageResponse<>(responses, nextCursor, hasMore));
     }
 
     @PatchMapping("/{id}/status")

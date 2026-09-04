@@ -27,6 +27,7 @@ public class RestaurantsController {
     }
 
     @GetMapping
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
     public ResponseEntity<PagedResponse<RestaurantResponse>> getRestaurants() {
         List<Restaurant> list = restaurantRepository.findByIsActiveTrue();
         List<RestaurantResponse> responses = list.stream().map(this::toResponse).toList();
@@ -34,6 +35,7 @@ public class RestaurantsController {
     }
 
     @GetMapping("/{id}")
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
     public ResponseEntity<RestaurantResponse> getRestaurant(@PathVariable UUID id) {
         Restaurant restaurant = restaurantRepository.findById(id)
                 .orElseThrow(() -> new NotFoundException("Restaurant not found: " + id));

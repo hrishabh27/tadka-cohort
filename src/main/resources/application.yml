@@ -7,6 +7,18 @@ spring:
     username: ${SPRING_DATASOURCE_USERNAME:tadka}
     password: ${SPRING_DATASOURCE_PASSWORD:tadka_local}
     driver-class-name: org.postgresql.Driver
+    hikari:
+      minimum-idle: 5
+      maximum-pool-size: 50
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+  replica:
+    datasource:
+      url: ${SPRING_REPLICA_DATASOURCE_URL:${SPRING_DATASOURCE_URL:jdbc:postgresql://127.0.0.1:5433/tadka?options=-c%20timezone=UTC}}
+      username: ${SPRING_REPLICA_DATASOURCE_USERNAME:${SPRING_DATASOURCE_USERNAME:tadka}}
+      password: ${SPRING_REPLICA_DATASOURCE_PASSWORD:${SPRING_DATASOURCE_PASSWORD:tadka_local}}
+      driver-class-name: org.postgresql.Driver
   sql:
     init:
       mode: always
