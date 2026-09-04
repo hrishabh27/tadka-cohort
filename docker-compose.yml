@@ -1,12 +1,12 @@
 # Tadka - Docker Compose
-# Day 1: PostgreSQL + Java Spring Boot API
+# Day 1 & Day 2: PostgreSQL + Java Spring Boot API
 
 services:
   postgres:
     image: postgres:16
     container_name: tadka-postgres
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5433}:5432"
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-tadka}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-tadka_local}
