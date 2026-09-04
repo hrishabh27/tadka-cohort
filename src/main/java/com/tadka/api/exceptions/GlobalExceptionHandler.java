@@ -46,4 +46,13 @@ public class GlobalExceptionHandler {
         problem.setProperty("timestamp", Instant.now());
         return problem;
     }
+
+    @ExceptionHandler({org.springframework.dao.OptimisticLockingFailureException.class, jakarta.persistence.OptimisticLockException.class})
+    public ProblemDetail handleOptimisticLock(Exception ex) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, "Concurrency conflict: the resource was updated by another request. Please refresh and retry.");
+        problem.setTitle("Concurrency Conflict");
+        problem.setType(URI.create("https://tadka.com/errors/concurrency-conflict"));
+        problem.setProperty("timestamp", Instant.now());
+        return problem;
+    }
 }

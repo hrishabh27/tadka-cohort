@@ -90,18 +90,63 @@ class OrderApiTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(orderId));
 
-        // 3. Update status: Created -> Confirmed
+        // 3. Update status: Created -> Confirmed (returns 204 No Content per Day 4 specification)
         mockMvc.perform(patch("/api/v1/orders/" + orderId + "/status")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(new UpdateOrderStatusRequest(OrderStatus.Confirmed))))
+                .andExpect(status().isNoContent());
+
+        // Verify state transitioned in database
+        mockMvc.perform(get("/api/v1/orders/" + orderId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("Confirmed"));
 
-        // 4. Invalid transition directly to Delivered should fail with 422
+        // 4. Invalid transition directly to Delivered or Confirmed->Confirmed should fail with 422
         mockMvc.perform(patch("/api/v1/orders/" + orderId + "/status")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(new UpdateOrderStatusRequest(OrderStatus.Delivered))))
+                        .content(objectMapper.writeValueAsString(new UpdateOrderStatusRequest(OrderStatus.Confirmed))))
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.title").value("Domain Rule Violation"));
+    }
+
+    @Test
+    void idempotencyKeyReplaysWinnerOrderWithoutDuplicates() throws Exception {
+        List<Restaurant> restaurants = restaurantRepository.findAll();
+        Restaurant restaurant = restaurants.get(0);
+        List<MenuItem> menu = menuItemRepository.findByRestaurantId(restaurant.getId());
+        MenuItem item1 = menu.get(0);
+
+        List<User> users = userRepository.findAll();
+        User user = users.get(0);
+
+        CreateOrderRequest request = new CreateOrderRequest(
+                user.getId(),
+                restaurant.getId(),
+                new Address("Flat 202", "Indiranagar", "Bengaluru", "560038"),
+                List.of(new OrderItemRequest(item1.getId(), 1))
+        );
+
+        String idempotencyKey = UUID.randomUUID().toString();
+
+        // First request with idempotency key -> 201 Created
+        MvcResult firstResult = mockMvc.perform(post("/api/v1/orders")
+                        .header("Idempotency-Key", idempotencyKey)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isCreated())
+                .andReturn();
+
+        String firstOrderId = objectMapper.readTree(firstResult.getResponse().getContentAsString()).get("id").asText();
+
+        // Second request with same idempotency key -> 200 OK with same order id
+        MvcResult secondResult = mockMvc.perform(post("/api/v1/orders")
+                        .header("Idempotency-Key", idempotencyKey)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        String secondOrderId = objectMapper.readTree(secondResult.getResponse().getContentAsString()).get("id").asText();
+        org.junit.jupiter.api.Assertions.assertEquals(firstOrderId, secondOrderId);
     }
 }

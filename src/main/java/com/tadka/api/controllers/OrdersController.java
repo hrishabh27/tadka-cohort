@@ -1,25 +1,32 @@
 package com.tadka.api.controllers;
 
 import com.tadka.api.contracts.*;
+import com.tadka.api.domain.orders.IdempotencyKey;
 import com.tadka.api.domain.orders.Order;
 import com.tadka.api.domain.orders.OrderItem;
 import com.tadka.api.domain.orders.OrderStatus;
+import com.tadka.api.domain.orders.events.OrderConfirmedEvent;
+import com.tadka.api.domain.orders.events.OrderPlacedEvent;
 import com.tadka.api.domain.restaurants.MenuItem;
 import com.tadka.api.domain.restaurants.Restaurant;
 import com.tadka.api.domain.valueobjects.Money;
 import com.tadka.api.exceptions.DomainException;
 import com.tadka.api.exceptions.NotFoundException;
+import com.tadka.api.repositories.IdempotencyKeyRepository;
 import com.tadka.api.repositories.MenuItemRepository;
 import com.tadka.api.repositories.OrderRepository;
 import com.tadka.api.repositories.RestaurantRepository;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 @RestController
@@ -29,18 +36,36 @@ public class OrdersController {
     private final OrderRepository orderRepository;
     private final RestaurantRepository restaurantRepository;
     private final MenuItemRepository menuItemRepository;
+    private final IdempotencyKeyRepository idempotencyKeyRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     public OrdersController(
             OrderRepository orderRepository,
             RestaurantRepository restaurantRepository,
-            MenuItemRepository menuItemRepository) {
+            MenuItemRepository menuItemRepository,
+            IdempotencyKeyRepository idempotencyKeyRepository,
+            ApplicationEventPublisher eventPublisher) {
         this.orderRepository = orderRepository;
         this.restaurantRepository = restaurantRepository;
         this.menuItemRepository = menuItemRepository;
+        this.idempotencyKeyRepository = idempotencyKeyRepository;
+        this.eventPublisher = eventPublisher;
     }
 
     @PostMapping
-    public ResponseEntity<OrderResponse> placeOrder(@RequestBody CreateOrderRequest request) {
+    @Transactional
+    public ResponseEntity<OrderResponse> placeOrder(
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
+            @RequestBody CreateOrderRequest request) {
+        if (idempotencyKey != null && !idempotencyKey.isBlank()) {
+            Optional<IdempotencyKey> existing = idempotencyKeyRepository.findByKey(idempotencyKey);
+            if (existing.isPresent()) {
+                Order order = orderRepository.findById(existing.get().getOrderId())
+                        .orElseThrow(() -> new NotFoundException("Order not found: " + existing.get().getOrderId()));
+                return ResponseEntity.ok(toResponse(order));
+            }
+        }
+
         if (request.items() == null || request.items().isEmpty()) {
             throw new DomainException("Order must contain at least one item");
         }
@@ -91,7 +116,13 @@ public class OrdersController {
                 tax
         );
 
-        orderRepository.save(order);
+        order = orderRepository.save(order);
+
+        if (idempotencyKey != null && !idempotencyKey.isBlank()) {
+            idempotencyKeyRepository.save(new IdempotencyKey(idempotencyKey, order.getId(), HttpStatus.CREATED.value(), order.getId().toString()));
+        }
+
+        eventPublisher.publishEvent(new OrderPlacedEvent(order.getId(), order.getCustomerId(), order.getRestaurantId(), order.getTotal()));
 
         return ResponseEntity.status(HttpStatus.CREATED).body(toResponse(order));
     }
@@ -104,32 +135,31 @@ public class OrdersController {
     }
 
     @PatchMapping("/{id}/status")
-    public ResponseEntity<OrderResponse> updateStatus(@PathVariable UUID id, @RequestBody UpdateOrderStatusRequest request) {
+    @Transactional
+    public ResponseEntity<Void> updateStatus(@PathVariable UUID id, @RequestBody UpdateOrderStatusRequest request) {
         Order order = orderRepository.findById(id)
                 .orElseThrow(() -> new NotFoundException("Order not found: " + id));
 
-        OrderStatus current = order.getStatus();
-        OrderStatus target = request.status();
+        order.transitionTo(request.status());
+        orderRepository.saveAndFlush(order);
 
-        if (!isValidTransition(current, target)) {
-            throw new DomainException("Invalid status transition from " + current + " to " + target);
+        if (request.status() == OrderStatus.Confirmed) {
+            eventPublisher.publishEvent(new OrderConfirmedEvent(order.getId(), order.getCustomerId()));
         }
 
-        order.setStatus(target);
-        orderRepository.save(order);
-
-        return ResponseEntity.ok(toResponse(order));
+        return ResponseEntity.noContent().build();
     }
 
-    private boolean isValidTransition(OrderStatus from, OrderStatus to) {
-        if (from == to) return true;
-        return switch (from) {
-            case Created -> to == OrderStatus.Confirmed || to == OrderStatus.Cancelled;
-            case Confirmed -> to == OrderStatus.Preparing || to == OrderStatus.Cancelled;
-            case Preparing -> to == OrderStatus.OutForDelivery || to == OrderStatus.Cancelled;
-            case OutForDelivery -> to == OrderStatus.Delivered;
-            case Delivered, Cancelled -> false;
-        };
+    @PostMapping("/{id}/cancel")
+    @Transactional
+    public ResponseEntity<Void> cancelOrder(@PathVariable UUID id, @RequestBody(required = false) CancelOrderRequest request) {
+        Order order = orderRepository.findById(id)
+                .orElseThrow(() -> new NotFoundException("Order not found: " + id));
+
+        order.transitionTo(OrderStatus.Cancelled);
+        orderRepository.saveAndFlush(order);
+
+        return ResponseEntity.noContent().build();
     }
 
     private OrderResponse toResponse(Order order) {

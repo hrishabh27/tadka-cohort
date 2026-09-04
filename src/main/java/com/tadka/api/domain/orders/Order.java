@@ -2,6 +2,7 @@ package com.tadka.api.domain.orders;
 
 import com.tadka.api.domain.valueobjects.Address;
 import com.tadka.api.domain.valueobjects.Money;
+import com.tadka.api.exceptions.DomainException;
 import jakarta.persistence.*;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -24,6 +25,9 @@ public class Order {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private OrderStatus status;
+
+    @Version
+    private Long version;
 
     @Embedded
     @AttributeOverrides({
@@ -116,6 +120,30 @@ public class Order {
     public void setStatus(OrderStatus status) {
         this.status = status;
         this.updatedAt = Instant.now();
+    }
+
+    public void transitionTo(OrderStatus newStatus) {
+        if (this.status == newStatus) {
+            throw new DomainException("Cannot transition order from " + this.status + " to " + newStatus + ": order is already " + newStatus);
+        }
+        boolean allowed = switch (this.status) {
+            case Created -> newStatus == OrderStatus.Confirmed || newStatus == OrderStatus.Cancelled;
+            case Confirmed -> newStatus == OrderStatus.Preparing || newStatus == OrderStatus.Cancelled;
+            case Preparing -> newStatus == OrderStatus.OutForDelivery || newStatus == OrderStatus.Cancelled;
+            case OutForDelivery -> newStatus == OrderStatus.Delivered || newStatus == OrderStatus.Cancelled;
+            case Delivered, Cancelled -> false;
+        };
+
+        if (!allowed) {
+            throw new DomainException("Illegal status transition from " + this.status + " to " + newStatus);
+        }
+
+        this.status = newStatus;
+        this.updatedAt = Instant.now();
+    }
+
+    public Long getVersion() {
+        return version;
     }
 
     public Money getSubtotal() {
