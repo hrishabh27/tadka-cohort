@@ -1,9 +1,5 @@
 # Tadka - Docker Compose
-# Phase 0: PostgreSQL only
-# Day 5: Add PostgreSQL read replica
-# Day 6: Add Redis
-# Day 8: Add Kafka + Zookeeper (first service extraction)
-# Day 13: Add Prometheus + Grafana
+# Day 1: PostgreSQL + Java Spring Boot API
 
 services:
   postgres:
@@ -19,9 +15,25 @@ services:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U tadka"]
-      interval: 10s
+      interval: 5s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: tadka-api
+    ports:
+      - "5224:5224"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/tadka
+      SPRING_DATASOURCE_USERNAME: tadka
+      SPRING_DATASOURCE_PASSWORD: tadka_local
+    depends_on:
+      postgres:
+        condition: service_healthy
     restart: unless-stopped
 
 volumes:

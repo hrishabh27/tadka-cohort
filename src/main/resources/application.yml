@@ -1,0 +1,18 @@
+server:
+  port: 5224
+
+spring:
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://127.0.0.1:5432/tadka}
+    username: ${SPRING_DATASOURCE_USERNAME:tadka}
+    password: ${SPRING_DATASOURCE_PASSWORD:tadka_local}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+    open-in-view: false
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true

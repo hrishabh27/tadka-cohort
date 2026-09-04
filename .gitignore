@@ -1,54 +1,39 @@
-# .NET
-bin/
-obj/
-*.user
-*.suo
-*.userosscache
-*.sln.docstates
-*.userprefs
-.vs/
+# Java / Maven
+target/
+*.class
+*.jar
+*.war
+*.ear
+*.log
 
-# Build results
-[Dd]ebug/
-[Rr]elease/
-x64/
-x86/
-bld/
-[Bb]in/
-[Oo]bj/
-[Ll]og/
-[Ll]ogs/
+# Maven wrapper jar if not checked in (keep scripts)
+.mvn/wrapper/maven-wrapper.jar
 
-# NuGet
-*.nupkg
-**/[Pp]ackages/*
-!**/[Pp]ackages/build/
-*.nuget.props
-*.nuget.targets
-project.lock.json
-
-# IDE
+# IDEs
 .idea/
-*.swp
-*~
+*.iml
+*.ipr
+*.iws
+.project
+.classpath
+.settings/
 .vscode/*
 !.vscode/settings.json
 !.vscode/tasks.json
 !.vscode/launch.json
 !.vscode/extensions.json
+*.swp
+*~
 
 # OS files
 .DS_Store
 Thumbs.db
 
-# Docker / local env (never commit a real .env)
+# Docker / local env
 .env
 docker/.env
 
-# User secrets
-secrets.json
-
-# Test results
+# Test & Coverage reports
 TestResults/
 coverage/
 *.coverage

@@ -1,8 +1,11 @@
 # ADR-001: Use .NET 10 with ASP.NET Core
 
-**Date:** 2026-05-30
-**Status:** Accepted
+**Date:** 2026-05-30 (Updated: 2026-09-04)
+**Status:** Superseded by Migration to Java 17 + Spring Boot 3.3.3
 **Deciders:** Tadka Engineering Team
+
+> [!NOTE]
+> **Migration Update:** This codebase was successfully migrated from .NET 10 to **Java 17 and Spring Boot 3.3.3** using Maven and Spring Data JPA. The architectural decision for monolith-first (ADR-002) remains active.
 
 ## Context
 
