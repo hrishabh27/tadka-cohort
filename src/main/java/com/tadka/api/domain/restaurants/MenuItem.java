@@ -11,7 +11,7 @@ public class MenuItem {
     @Id
     private UUID id;
 
-    @Column(name = "restaurant_id", insertable = false, updatable = false)
+    @Column(name = "restaurant_id", nullable = false)
     private UUID restaurantId;
 
     @Column(nullable = false)

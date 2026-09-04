@@ -7,6 +7,7 @@ import com.tadka.api.domain.orders.OrderItem;
 import com.tadka.api.domain.orders.OrderStatus;
 import com.tadka.api.domain.orders.events.OrderConfirmedEvent;
 import com.tadka.api.domain.orders.events.OrderPlacedEvent;
+import com.tadka.api.domain.orders.events.OrderStatusChangedEvent;
 import com.tadka.api.domain.restaurants.MenuItem;
 import com.tadka.api.domain.restaurants.Restaurant;
 import com.tadka.api.domain.valueobjects.Money;
@@ -179,6 +180,8 @@ public class OrdersController {
             eventPublisher.publishEvent(new OrderConfirmedEvent(order.getId(), order.getCustomerId()));
         }
 
+        eventPublisher.publishEvent(new OrderStatusChangedEvent(order.getId(), order.getStatus(), order.getUpdatedAt()));
+
         return ResponseEntity.noContent().build();
     }
 
@@ -190,6 +193,8 @@ public class OrdersController {
 
         order.transitionTo(OrderStatus.Cancelled);
         orderRepository.saveAndFlush(order);
+
+        eventPublisher.publishEvent(new OrderStatusChangedEvent(order.getId(), order.getStatus(), order.getUpdatedAt()));
 
         return ResponseEntity.noContent().build();
     }

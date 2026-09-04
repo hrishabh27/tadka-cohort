@@ -20,10 +20,15 @@ public class RestaurantsController {
 
     private final RestaurantRepository restaurantRepository;
     private final MenuItemRepository menuItemRepository;
+    private final com.tadka.api.infrastructure.caching.CacheService cacheService;
 
-    public RestaurantsController(RestaurantRepository restaurantRepository, MenuItemRepository menuItemRepository) {
+    public RestaurantsController(
+            RestaurantRepository restaurantRepository,
+            MenuItemRepository menuItemRepository,
+            com.tadka.api.infrastructure.caching.CacheService cacheService) {
         this.restaurantRepository = restaurantRepository;
         this.menuItemRepository = menuItemRepository;
+        this.cacheService = cacheService;
     }
 
     @GetMapping
@@ -42,7 +47,24 @@ public class RestaurantsController {
         return ResponseEntity.ok(toResponse(restaurant));
     }
 
+    @GetMapping("/{id}/menu")
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
+    public ResponseEntity<List<MenuItemResponse>> getMenu(@PathVariable UUID id) {
+        Restaurant restaurant = restaurantRepository.findById(id)
+                .orElseThrow(() -> new NotFoundException("Restaurant not found: " + id));
+
+        @SuppressWarnings("unchecked")
+        List<MenuItemResponse> menu = (List<MenuItemResponse>) (List<?>) cacheService.getOrSet(
+                "restaurant:menu:" + id,
+                java.time.Duration.ofSeconds(60),
+                () -> menuItemRepository.findByRestaurantId(id).stream().map(this::toMenuItemResponse).toList(),
+                List.class
+        );
+        return ResponseEntity.ok(menu);
+    }
+
     @PostMapping("/{id}/menu")
+    @org.springframework.transaction.annotation.Transactional
     public ResponseEntity<MenuItemResponse> addMenuItem(@PathVariable UUID id, @RequestBody CreateMenuItemRequest request) {
         Restaurant restaurant = restaurantRepository.findById(id)
                 .orElseThrow(() -> new NotFoundException("Restaurant not found: " + id));
@@ -55,8 +77,10 @@ public class RestaurantsController {
                 request.isAvailable()
         );
 
-        restaurant.addMenuItem(item);
-        restaurantRepository.save(restaurant);
+        menuItemRepository.save(item);
+
+        // Delete-on-write cache invalidation
+        cacheService.evict("restaurant:menu:" + id);
 
         return ResponseEntity.status(HttpStatus.CREATED).body(toMenuItemResponse(item));
     }

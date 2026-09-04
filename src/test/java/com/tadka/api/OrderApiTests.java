@@ -205,4 +205,66 @@ class OrderApiTests {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.title").value("Bad Request"));
     }
+
+    @Test
+    void menuCacheAsideAndInvalidationOnWrite() throws Exception {
+        List<Restaurant> restaurants = restaurantRepository.findAll();
+        Restaurant restaurant = restaurants.get(0);
+
+        // 1. Initial menu fetch populates cache
+        MvcResult firstFetch = mockMvc.perform(get("/api/v1/restaurants/" + restaurant.getId() + "/menu"))
+                .andExpect(status().isOk())
+                .andReturn();
+        int initialCount = objectMapper.readTree(firstFetch.getResponse().getContentAsString()).size();
+
+        // 2. Add new menu item -> evicts cache
+        var addReq = new com.tadka.api.contracts.CreateMenuItemRequest(
+                "Tadka Special Biryani",
+                "Fragrant basmati rice cooked with spices",
+                java.math.BigDecimal.valueOf(349.0),
+                true
+        );
+
+        mockMvc.perform(post("/api/v1/restaurants/" + restaurant.getId() + "/menu")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(addReq)))
+                .andExpect(status().isCreated());
+
+        // 3. Next fetch retrieves newly added item
+        mockMvc.perform(get("/api/v1/restaurants/" + restaurant.getId() + "/menu"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(initialCount + 1)));
+    }
+
+    @Test
+    void orderTrackingStreamReturnsSseStream() throws Exception {
+        List<Restaurant> restaurants = restaurantRepository.findAll();
+        Restaurant restaurant = restaurants.get(0);
+        List<MenuItem> menu = menuItemRepository.findByRestaurantId(restaurant.getId());
+        MenuItem item1 = menu.get(0);
+        List<User> users = userRepository.findAll();
+        User user = users.get(0);
+
+        CreateOrderRequest request = new CreateOrderRequest(
+                user.getId(),
+                restaurant.getId(),
+                new Address("Flat 101", "MG Road", "Bengaluru", "560001"),
+                List.of(new OrderItemRequest(item1.getId(), 1))
+        );
+
+        MvcResult result = mockMvc.perform(post("/api/v1/orders")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isCreated())
+                .andReturn();
+
+        String orderId = objectMapper.readTree(result.getResponse().getContentAsString()).get("id").asText();
+
+        // Connect to SSE stream
+        mockMvc.perform(get("/api/v1/orders/" + orderId + "/events")
+                        .accept(MediaType.TEXT_EVENT_STREAM))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_EVENT_STREAM))
+                .andExpect(content().string(containsString("status")));
+    }
 }

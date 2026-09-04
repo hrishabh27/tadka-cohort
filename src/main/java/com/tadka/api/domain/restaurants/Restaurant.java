@@ -37,7 +37,7 @@ public class Restaurant {
     private boolean isActive;
 
     @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
-    @JoinColumn(name = "restaurant_id")
+    @JoinColumn(name = "restaurant_id", insertable = false, updatable = false)
     private List<MenuItem> menuItems = new ArrayList<>();
 
     protected Restaurant() {}
